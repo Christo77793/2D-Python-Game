@@ -19,6 +19,7 @@ FPS = 60
 
 # Game Var
 gravity = 0.75
+title_size = 40
 
 # Defining player actions
 moving_left = False
@@ -168,8 +169,7 @@ class Soldier(pygame.sprite.Sprite):
     def throw_grenade(self):
 
         grenade = Grenade(self.rect.centerx + (0.4 * self.rect.size[0] * self.direction),
-                          self.rect.top,
-                          # throwing the grenade in a trajectory
+                          self.rect.top,  # throwing the grenade in a trajectory
                           self.direction)
         grenade_groups.add(grenade)
 
@@ -259,14 +259,16 @@ class Bullet(pygame.sprite.Sprite):
                 # if the bullet hits a player or an enemy it gets killed
                 self.kill()
 
-        if pygame.sprite.spritecollide(enemy, bullet_groups, False):
+        for enemy in enemy_group:
 
-            # if shot reduce player health
-            enemy.health -= 25
+            if pygame.sprite.spritecollide(enemy, bullet_groups, False):
 
-            if enemy.alive:
-                # if the bullet hits a player or an enemy it gets killed
-                self.kill()
+                # if shot reduce player health
+                enemy.health -= 25
+
+                if enemy.alive:
+                    # if the bullet hits a player or an enemy it gets killed
+                    self.kill()
 
 
 class Grenade(pygame.sprite.Sprite):
@@ -304,14 +306,81 @@ class Grenade(pygame.sprite.Sprite):
         self.rect.x += dx
         self.rect.y += dy
 
+        # countdown timer
+        self.timer -= 1.75  # modify to change time taken to explode after thrown
+
+        if self.timer <= 0:
+            self.kill()
+            explosion = Explosion(self.rect.x, self.rect.y, 0.5)
+            explosion_group.add(explosion)
+
+            # do damage to nearby objects (players & enemies)
+
+            if abs(self.rect.centerx - player.rect.centerx) < title_size * 2 and abs(self.rect.centery - player.rect.centery) < title_size * 2:
+                # abs gives a +ve number even if the subtraction goes less than 0
+                player.health -= 45
+
+            for enemy in enemy_group:
+                if abs(self.rect.centerx - enemy.rect.centerx) < title_size * 2 and abs(self.rect.centery - enemy.rect.centery) < title_size * 2:
+                    # abs gives a +ve number even if the subtraction goes less than 0
+                    enemy.health -= 50
+
+
+class Explosion(pygame.sprite.Sprite):
+
+    def __init__(self, x, y, scale):
+        pygame.sprite.Sprite.__init__(self)
+
+        self.images = []
+
+        for num in range(1, 6):
+            img = pygame.image.load(f'img/explosion/exp{num}.png').convert_alpha()
+            img = pygame.transform.scale(img, (int(img.get_width() * scale), (int(img.get_height() * scale))))
+            self.images.append(img)
+
+        self.frame_index = 0
+        self.image = self.images[self.frame_index]
+
+        self.rect = self.image.get_rect()
+        self.rect.center = (x, y)
+
+        self.counter = 0
+
+    def update(self):
+        explosion_speed = 3
+
+        # update explosion animation
+        self.counter += 1
+
+        if self.counter >= explosion_speed:
+            self.counter = 0
+            self.frame_index += 1
+
+            # if animation is complete then delete explosion
+            if self.frame_index >= len(self.images):
+                self.kill()
+            else:
+                self.image = self.images[self.frame_index]
+
 
 # creating Sprite groups
+
+# object groups
 bullet_groups = pygame.sprite.Group()
 grenade_groups = pygame.sprite.Group()
+explosion_group = pygame.sprite.Group()
+
+# character groups
+enemy_group = pygame.sprite.Group()
 
 # Player Location
 player = Soldier('player', 200, 300, 2, 5, 21)
+
 enemy = Soldier('enemy', 400, 270, 2, 5, 21)
+enemy2 = Soldier('enemy', 500, 270, 2, 5, 21)
+enemy_group.add(enemy)
+enemy_group.add(enemy2)
+
 
 run = True
 while run:
@@ -320,13 +389,12 @@ while run:
 
     draw_bg()  # update background each iteration
 
-    # updating animation
-    player.update()
-    enemy.update()
+    player.update()  # updating animation
+    player.draw()  # draw character
 
-    # draw character
-    player.draw()
-    enemy.draw()
+    for enemy in enemy_group:
+        enemy.update()
+        enemy.draw()
 
     # update and draw groups
 
@@ -337,6 +405,10 @@ while run:
     # grenade
     grenade_groups.update()
     grenade_groups.draw(screen)
+
+    # explosion
+    explosion_group.update()
+    explosion_group.draw(screen)
 
     # update player actions
     if player.alive:
