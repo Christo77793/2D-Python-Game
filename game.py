@@ -1,5 +1,6 @@
 import pygame
 import os  # used to count number of files in a folder
+import random
 
 pygame.init()
 
@@ -19,7 +20,7 @@ FPS = 60
 
 # Game Var
 gravity = 0.75
-title_size = 40
+tile_size = 40
 
 # Defining player actions
 moving_left = False
@@ -105,6 +106,14 @@ class Soldier(pygame.sprite.Sprite):
 
         self.update_time = pygame.time.get_ticks()
 
+        # AI variables
+        self.move_counter = 0
+
+        self.vision = pygame.Rect(0, 0, 150, 20)
+
+        self.idling = False
+        self.idling_counter = 0
+
         # loading all images for the animation
         animation_types = ["Idle", "Run", "Jump", "Death"]
 
@@ -182,7 +191,7 @@ class Soldier(pygame.sprite.Sprite):
             self.shoot_cooldown = 20  # control bullet gap
 
             bullet = Bullet(
-                self.rect.centerx + (0.6 * self.rect.size[0] * self.direction),
+                self.rect.centerx + (0.75 * self.rect.size[0] * self.direction),
                 # setting the bullet to come in front of the player based on the direction
                 # direction is -ve or +ve
                 self.rect.centery,
@@ -193,16 +202,60 @@ class Soldier(pygame.sprite.Sprite):
             # reduce ammo
             self.ammo -= 1
 
+    def ai(self):
+
+        if self.alive and player.alive:
+
+            if not self.idling and random.randint(1, 200) == 1:
+                self.update_action(0)  # idle
+                self.idling = True
+                self.idling_counter = 50
+
+            # check if the AI is near the player
+            if self.vision.colliderect(player.rect):
+                # stop running
+                self.update_action(0)  # idle
+                self.shoot()
+
+            else:
+
+                if not self.idling:
+
+                    if self.direction == 1:
+                        ai_moving_right = True
+                    else:
+                        ai_moving_right = False
+
+                    ai_moving_left = not ai_moving_right
+
+                    self.move(ai_moving_left, ai_moving_right)
+                    self.update_action(1)  # run
+                    self.move_counter += 1
+
+                    # update enemy vision as the enemy moves
+                    self.vision.center = (self.rect.centerx + (75 * self.direction), self.rect.centery)
+
+                    if self.move_counter > tile_size:
+                        self.direction *= -1
+                        self.move_counter *= -1
+
+                else:
+                    self.idling_counter -= 1
+
+                    if self.idling_counter <= 0:
+                        self.idling = False
+
     def throw_grenade(self):
 
-        grenade = Grenade(self.rect.centerx + (0.4 * self.rect.size[0] * self.direction),
-                          self.rect.top,  # throwing the grenade in a trajectory
-                          self.direction)
+        if self.grenades > 0:
+            grenade = Grenade(self.rect.centerx + (0.4 * self.rect.size[0] * self.direction),
+                              self.rect.top,  # throwing the grenade in a trajectory
+                              self.direction)
 
-        grenade_groups.add(grenade)
+            grenade_groups.add(grenade)
 
-        # reduce grenades
-        self.grenades -= 1
+            # reduce grenades
+            self.grenades -= 1
 
     def update_animation(self):
         animation_cooldown = 100  # 100 milliseconds
@@ -265,7 +318,6 @@ class HealthBar():
         self.max_health = max_health
 
     def draw(self, health):
-
         # update with new health
         self.health = health
 
@@ -287,7 +339,7 @@ class ItemBox(pygame.sprite.Sprite):
         self.image = item_boxes[self.item_type]
 
         self.rect = self.image.get_rect()
-        self.rect.midtop = (x + (title_size // 2), y + (title_size - self.image.get_height()))
+        self.rect.midtop = (x + (tile_size // 2), y + (tile_size - self.image.get_height()))
 
     def update(self):
 
@@ -403,12 +455,12 @@ class Grenade(pygame.sprite.Sprite):
 
             # do damage to nearby objects (players & enemies)
 
-            if abs(self.rect.centerx - player.rect.centerx) < title_size * 2 and abs(self.rect.centery - player.rect.centery) < title_size * 2:
+            if abs(self.rect.centerx - player.rect.centerx) < tile_size * 2 and abs(self.rect.centery - player.rect.centery) < tile_size * 2:
                 # abs gives a +ve number even if the subtraction goes less than 0
                 player.health -= 45
 
             for enemy in enemy_group:
-                if abs(self.rect.centerx - enemy.rect.centerx) < title_size * 2 and abs(self.rect.centery - enemy.rect.centery) < title_size * 2:
+                if abs(self.rect.centerx - enemy.rect.centerx) < tile_size * 2 and abs(self.rect.centery - enemy.rect.centery) < tile_size * 2:
                     # abs gives a +ve number even if the subtraction goes less than 0
                     enemy.health -= 50
 
@@ -472,12 +524,12 @@ item_boxes_group.add(item_box)
 # Character Location
 
 # player
-player = Soldier('player', 200, 300, 2, 5, 21, 5)
+player = Soldier('player', 200, 300, 1.75, 5, 21, 5)
 health_bar = HealthBar(7, 15, player.health, player.health)
 
 # enemy
-enemy = Soldier('enemy', 400, 270, 2, 5, 21, 3)
-enemy2 = Soldier('enemy', 500, 270, 2, 5, 21, 3)
+enemy = Soldier('enemy', 400, 270, 1.75, 3, 21, 3)
+enemy2 = Soldier('enemy', 500, 270, 1.75, 3, 21, 3)
 enemy_group.add(enemy)
 enemy_group.add(enemy2)
 
@@ -503,6 +555,7 @@ while run:
     player.draw()  # draw character
 
     for enemy in enemy_group:
+        enemy.ai()
         enemy.update()
         enemy.draw()
 
@@ -532,7 +585,7 @@ while run:
             player.shoot()
 
         # throw grenades
-        elif grenade and grenade_thrown == False:  # using elif to avoid shooting and throwing grenades at the same time
+        elif grenade and not grenade_thrown:  # using elif to avoid shooting and throwing grenades at the same time
             player.throw_grenade()
             grenade_thrown = True
 
